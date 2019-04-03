@@ -283,9 +283,10 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
         where S: Service<Request = Request, Response = Response<Bd>, Error = ::Error>,
               Bd: Stream<Error=::Error>,
               Bd::Item: AsRef<[u8]>,
-              I: AsyncRead + AsyncWrite,
+              I: AsyncRead + AsyncWrite + RemoteAddr,
 
     {
+        let addr = io.remote();
         let mut conn = proto::Conn::new(io);
         if !self.keep_alive {
             conn.disable_keep_alive();
@@ -296,6 +297,7 @@ impl<B: AsRef<[u8]> + 'static> Http<B> {
         }
         Connection {
             conn: proto::dispatch::Dispatcher::new(proto::dispatch::Server::new(service), conn),
+            remote_addr: addr,
         }
     }
 }
@@ -600,6 +602,10 @@ where B::Item: AsRef<[u8]>
 
 // ===== impl Serve =====
 
+pub trait RemoteAddr {
+    fn remote(&self) -> SocketAddr;
+}
+
 impl<I, S> Serve<I, S> {
     /*
     /// Spawn all incoming connections onto the provide executor.
@@ -621,7 +627,7 @@ impl<I, S> Serve<I, S> {
 impl<I, S, B> Stream for Serve<I, S>
 where
     I: Stream<Error=io::Error>,
-    I::Item: AsyncRead + AsyncWrite,
+    I::Item: AsyncRead + AsyncWrite + RemoteAddr,
     S: NewService<Request=Request, Response=Response<B>, Error=::Error>,
     B: Stream<Error=::Error>,
     B::Item: AsRef<[u8]>,
@@ -778,7 +784,7 @@ mod addr_stream {
     use futures::Poll;
     use tokio::net::TcpStream;
     use tokio_io::{AsyncRead, AsyncWrite};
-
+    use super::RemoteAddr;
 
     #[derive(Debug)]
     pub struct AddrStream {
@@ -792,6 +798,12 @@ mod addr_stream {
                 inner: tcp,
                 remote_addr: addr,
             }
+        }
+    }
+
+    impl RemoteAddr for AddrStream {
+        fn remote(&self) -> SocketAddr {
+            self.remote_addr
         }
     }
 

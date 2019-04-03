@@ -13,9 +13,10 @@ use std::fmt;
 use bytes::Bytes;
 use futures::{Future, Poll, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
+use std::net::SocketAddr;
 
 use proto;
-use super::{HyperService, Request, Response, Service};
+use super::{HyperService, Request, Response, Service, RemoteAddr};
 
 /// A future binding a connection with a Service.
 ///
@@ -34,6 +35,17 @@ where
         <S::ResponseBody as Stream>::Item,
         proto::ServerTransaction,
     >,
+    pub(super) remote_addr: SocketAddr,
+}
+impl<I,S> RemoteAddr for Connection<I, S>
+where
+    S: HyperService,
+    S::ResponseBody: Stream<Error=::Error>,
+    <S::ResponseBody as Stream>::Item: AsRef<[u8]>,
+{
+    fn remote(&self) -> SocketAddr {
+        self.remote_addr
+    }
 }
 
 /// Deconstructed parts of a `Connection`.
