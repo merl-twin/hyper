@@ -605,6 +605,9 @@ where B::Item: AsRef<[u8]>
 pub trait RemoteAddr {
     fn remote(&self) -> SocketAddr;
 }
+pub trait HasRemoteAddr {
+    fn remote_addr(&mut self, addr: SocketAddr);
+}
 
 impl<I, S> Serve<I, S> {
     /*
@@ -624,11 +627,12 @@ impl<I, S> Serve<I, S> {
     }
 }
 
-impl<I, S, B> Stream for Serve<I, S>
+impl<I, S, B, SI> Stream for Serve<I, S>
 where
     I: Stream<Error=io::Error>,
     I::Item: AsyncRead + AsyncWrite + RemoteAddr,
-    S: NewService<Request=Request, Response=Response<B>, Error=::Error>,
+    S: NewService<Request=Request, Response=Response<B>, Error=::Error, Instance=SI>,
+    SI: HasRemoteAddr + Service<Request=Request, Response=Response<B>, Error=::Error>,
     B: Stream<Error=::Error>,
     B::Item: AsRef<[u8]>,
 {
@@ -637,7 +641,8 @@ where
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         if let Some(io) = try_ready!(self.incoming.poll()) {
-            let service = self.new_service.new_service()?;
+            let mut service = self.new_service.new_service()?;
+            service.remote_addr(io.remote());
             Ok(Async::Ready(Some(self.protocol.serve_connection(io, service))))
         } else {
             Ok(Async::Ready(None))
